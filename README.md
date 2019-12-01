@@ -34,9 +34,10 @@ If you've got a time series setup in place, you likely have grafana or other gra
 
 ## Prerequisites
 
-1. Nomad infrastructure with metrics reporting to prometheus
-2. Keys to enable communication with your Nomad infrastructure
-3. Unbound workloads in your Nomad container environment that need reviewing
+1. Groovy installed (`brew install groovy`)
+2. Nomad infrastructure with metrics reporting to prometheus
+3. Keys to enable communication with your Nomad infrastructure
+4. Unbound workloads in your Nomad container environment that need reviewing
 
 ## Usage
 
@@ -59,6 +60,21 @@ Nomad Workload CPU Actuals Report time periods; 1h, 1d, 7d, 30d
  -qst,--querySleepTime <arg>           Query sleep time in seconds [defaults to 0]
 Environment queries are run in parallel to reduce report generation time. Use %env% to inject environment into --nomadTLSKeyFilename, --nomadTLSCertFilename, --nomadHost, --prometheusHost
 ```
+
+## Understand the report
+
+Reports are output with the timestamp from which the report generation process was started. Reports have a tab for each environment passed to the command line application. There are shaded or colored sections of the workbook that compare the following values to the `Nomad Job -> Task Group -> Tasks's` Allocated MHz:
+
+1. Mean
+2. 50th Percentile
+3. 95th Percentile
+4. Max
+
+... with the colors:
+
+- green: meaning a value is somewhere bewteen 0 and the Allocated MHz, richer meaning further (0 is darkest or richest green while closest to Allocated MHz is more green/white or white)
+- yellow: meaning a value is somewhere between the Allocated MHz and 2x the Allocated MHz, richer meaning further (2x Allocated MHz is darkest or richest yellow, while closest to Allocated MHz is more yellow/white or white)
+- red: meaning a value is or is greather than 2x the Allocated MHz
 
 ### See Also
 
