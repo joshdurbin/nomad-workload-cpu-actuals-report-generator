@@ -76,6 +76,10 @@ Reports are output with the timestamp from which the report generation process w
 - yellow: meaning a value is somewhere between the Allocated MHz and 2x the Allocated MHz, richer meaning further (2x Allocated MHz is darkest or richest yellow, while closest to Allocated MHz is more yellow/white or white)
 - red: meaning a value is or is greather than 2x the Allocated MHz
 
+## Sample Output
+
+![Sample Output](https://github.com/joshdurbin/nomad-workload-cpu-actuals-report/raw/gh-readme/output.jpg)
+
 ### See Also
 
 - [Using Prometheus to Monitor Nomad Metrics](https://www.nomadproject.io/guides/operations/monitoring-and-alerting/prometheus-metrics.html)
