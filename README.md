@@ -80,3 +80,4 @@ Reports are output with the timestamp from which the report generation process w
 
 - [Using Prometheus to Monitor Nomad Metrics](https://www.nomadproject.io/guides/operations/monitoring-and-alerting/prometheus-metrics.html)
 - [Shape of data](https://brownmath.com/stat/shape.htm)
+- [Understanding Descriptive Statistics](https://towardsdatascience.com/understanding-descriptive-statistics-c9c2b0641291)
