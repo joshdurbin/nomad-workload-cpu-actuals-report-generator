@@ -8,6 +8,7 @@ This is a tool that generates the historical workload output for nomad jobs and 
 - the past day, sampling every 5 minutes
 - the past 7 days, sampling every 30 minutes
 - the past 30 days, sampling every hour
+- the past 90 days, sampling every 6 hours (requires flag to run)
 
 The query to prometheus is to/for the `avg_over_time` using the metric `nomad_client_allocs_cpu_total_percent`.
 
@@ -20,13 +21,14 @@ The tool reports out the following once per task group per environment:
 
 ...and if enabled, for each 1 hour, 1 day, 7 days, 30 days:
 
-1. Mean
-2. 50th Percentile
-3. 95th Percentile
-4. Max
-5. Standard Deviation
-6. Kurtosis
-7. Skewness
+1. Miss Rate (rate of stats from Prometheus that refer to past, now non-existent Nomad instances)
+2. Mean
+3. 50th Percentile
+4. 95th Percentile
+5. Max
+6. Standard Deviation
+7. Kurtosis
+8. Skewness
 
 ## Why use this?
 
