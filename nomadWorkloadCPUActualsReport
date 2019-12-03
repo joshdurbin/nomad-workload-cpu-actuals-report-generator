@@ -189,11 +189,11 @@ def latch = new CountDownLatch(envs.size())
   def taskGroup
   def allocatedMHz
   def count
-  def missRate
   def hourStats
   def dayStats
   def weekStats
   def monthStats
+  def quarterYearStats
 }
 
 // loop through environments, start threads
@@ -369,6 +369,7 @@ while (latch.count > 0L) {
     if (containerStats.dayStats) addValuesToRow(row, containerStats.allocatedMHz, containerStats.dayStats)
     if (containerStats.weekStats) addValuesToRow(row, containerStats.allocatedMHz, containerStats.weekStats)
     if (containerStats.monthStats) addValuesToRow(row, containerStats.allocatedMHz, containerStats.monthStats)
+    if (containerStats.quarterYearStats) addValuesToRow(row, containerStats.allocatedMHz, containerStats.quarterYearStats)
   }
 }
 
