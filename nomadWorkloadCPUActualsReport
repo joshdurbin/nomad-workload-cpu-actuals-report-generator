@@ -81,7 +81,6 @@ def perTaskQuerySleepTime = TimeUnit.SECONDS.toMillis(cliOptions.querySleepTime)
 
 def queuePollWait = 5L
 def mathContext = new MathContext(14)
-def missRateMathContext = new MathContext(2, RoundingMode.HALF_UP)
 
 // header values used for each sheet in the excel doc
 def perQueryWindowMetrics = ['Miss Rate', 'Mean', 'p50', 'p95', 'Max', 'Std Dev', 'Kurtosis', 'Skewness']
@@ -138,12 +137,9 @@ def styleCellForValues = { allocated, actual ->
 
 // takes a pre-created poi row and adds cells for the stats results
 def addValuesToRow = { row, allocated, stats ->
-
+  
   def missRateCell = row.createCell(row.getLastCellNum())
-  def missResults = new BigDecimal(stats.missResults, missRateMathContext)
-  def missRate = missResults.divide(new BigDecimal(stats.totalResults, missRateMathContext), missRateMathContext)
-  def missPercentage = missRate.movePointRight(2)
-  missRateCell.setCellValue("% ${missPercentage.toString()}")
+  missRateCell.setCellValue("% ${stats.getMissRate()}")
 
   def meanCell = row.createCell(row.getLastCellNum())
   def mean = stats.mean as Integer
@@ -176,9 +172,21 @@ def latch = new CountDownLatch(envs.size())
 
 @Canonical class StatsWithMissData {
 
+  static def mathContext = new MathContext(2, RoundingMode.HALF_UP)
+
   @Delegate DescriptiveStatistics stats
   def totalResults
   def missResults
+
+  BigDecimal getMissRate() {
+    if (totalResults) {
+      def missResults = new BigDecimal(missResults, mathContext)
+      def missRate = missResults.divide(new BigDecimal(totalResults, mathContext), mathContext)
+      missRate.movePointRight(2)
+    } else {
+      BigDecimal.ZERO
+    }
+  }
 }
 
 // class that allows for data movement through processing threads to background thread
