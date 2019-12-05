@@ -68,6 +68,8 @@ if (cliOptions.help) {
   System.exit(0)
 }
 
+def printErr = System.err.&println
+
 // timers and dates for file output
 def totalTimeStopwatch = new Stopwatch().start()
 def startTime = LocalDateTime.now()
@@ -137,7 +139,7 @@ def styleCellForValues = { allocated, actual ->
 
 // takes a pre-created poi row and adds cells for the stats results
 def addValuesToRow = { row, allocated, stats ->
-  
+
   def missRateCell = row.createCell(row.getLastCellNum())
   missRateCell.setCellValue("% ${stats.getMissRate()}")
 
@@ -209,138 +211,144 @@ envs.each { environment ->
 
   Thread.start {
 
-    def perEnvironmentStopwatch = new Stopwatch().start()
-    println "Beginning to gather data for ${environment}..."
+    try {
 
-    def prometheusHost = cliOptions.prometheusHost.replaceAll(envReplacement, environment)
+      def perEnvironmentStopwatch = new Stopwatch().start()
+      println "Beginning to gather data for ${environment}..."
 
-    def nomadConfig = new NomadApiConfiguration.Builder()
-      .setAddress(cliOptions.nomadHost.replaceAll(envReplacement, environment))
-      .setTlsCaFile(cliOptions.nomadTLSCACertFilename)
-      .setTlsSkipVerify(false)
-      .setTlsCertAndKeyFiles(cliOptions.nomadTLSCertFilename.replaceAll(envReplacement, environment), cliOptions.nomadTLSKeyFilename.replaceAll(envReplacement, environment))
-      .build()
-    def nomadApiClient = new NomadApiClient(nomadConfig)
+      def prometheusHost = cliOptions.prometheusHost.replaceAll(envReplacement, environment)
 
-    def jobsToTaskGroups = [:]
-    def taskGroupToAllocatedMHZ = [:]
-    def taskGroupToCount = [:]
-    def jobsQueryStopwatch = new Stopwatch().start()
+      def nomadConfig = new NomadApiConfiguration.Builder()
+        .setAddress(cliOptions.nomadHost.replaceAll(envReplacement, environment))
+        .setTlsCaFile(cliOptions.nomadTLSCACertFilename)
+        .setTlsSkipVerify(false)
+        .setTlsCertAndKeyFiles(cliOptions.nomadTLSCertFilename.replaceAll(envReplacement, environment), cliOptions.nomadTLSKeyFilename.replaceAll(envReplacement, environment))
+        .build()
+      def nomadApiClient = new NomadApiClient(nomadConfig)
 
-    // get a list of all services in nomad
-    nomadApiClient.getJobsApi().list().getValue().findAll { job ->
-      job.type == 'service'
-    }.each { job ->
-      nomadApiClient.getJobsApi().info(job.name).getValue().each { jobDetail ->
-        jobsToTaskGroups.put(job.name, [])
-        jobDetail.getTaskGroups().each { taskGroup ->
+      def jobsToTaskGroups = [:]
+      def taskGroupToAllocatedMHZ = [:]
+      def taskGroupToCount = [:]
+      def jobsQueryStopwatch = new Stopwatch().start()
 
-          // compute the sum of all task group, tasks CPU resource definitions
-          def totalCPUResourcesForAllTasksInTaskGroup = taskGroup.tasks.collect { task ->
-            task.resources.cpu
-          }.sum()
+      // get a list of all services in nomad
+      nomadApiClient.getJobsApi().list().getValue().findAll { job ->
+        job.type == 'service'
+      }.each { job ->
+        nomadApiClient.getJobsApi().info(job.name).getValue().each { jobDetail ->
+          jobsToTaskGroups.put(job.name, [])
+          jobDetail.getTaskGroups().each { taskGroup ->
 
-          taskGroupToCount.put(taskGroup.name, taskGroup.count)
-          taskGroupToAllocatedMHZ.put(taskGroup.name, totalCPUResourcesForAllTasksInTaskGroup as Integer)
-          jobsToTaskGroups.get(job.name).add(taskGroup.name)
-        }
-      }
-    }
+            // compute the sum of all task group, tasks CPU resource definitions
+            def totalCPUResourcesForAllTasksInTaskGroup = taskGroup.tasks.collect { task ->
+              task.resources.cpu
+            }.sum()
 
-    jobsQueryStopwatch.stop()
-    println "Finished building list of jobs and task groups for ${environment} in ${jobsQueryStopwatch.elapsed(TimeUnit.MILLISECONDS)} ms"
-
-    def nomadClientsQueryStopWatch = new Stopwatch().start()
-    def nomadClientsToCPUFrequency = [:]
-
-    // add clock frequencies for known nomad instances
-    nomadApiClient.getNodesApi().list().getValue().each { nomadClient ->
-      nomadApiClient.getNodesApi().info(nomadClient.id).getValue().each { nomad ->
-        nomadClientsToCPUFrequency.put(nomad.name, new BigDecimal(nomad.getAttributes().get('cpu.frequency')))
-      }
-    }
-
-    def averageKnownClientFrequency = nomadClientsToCPUFrequency.values().sum() / nomadClientsToCPUFrequency.values().size()
-
-    nomadClientsQueryStopWatch.stop()
-    println "Finished building list of nomad clients for ${environment} in ${nomadClientsQueryStopWatch.elapsed(TimeUnit.MILLISECONDS)} ms"
-
-    def slurper = new JsonSlurper()
-
-    // closure to open url, parse, and report back on stats
-    def slurpAndReport = { url ->
-
-      def sumStats = new DescriptiveStatistics()
-
-      def totalResults = 0
-      def missResults = 0
-
-      try {
-
-        def parsedResponse = slurper.parse(url.toURL())
-
-        parsedResponse.data.result.each { result ->
-
-          result.values.each { value ->
-
-            totalResults++
-
-            def snapshotCPUTotalPercent = new BigDecimal(value.last(), mathContext)
-            def snapshotCPUAsLoadAverage = snapshotCPUTotalPercent.movePointLeft(2)
-
-            if (nomadClientsToCPUFrequency.containsKey(result.metric.host)) {
-              sumStats.addValue(snapshotCPUAsLoadAverage.multiply(nomadClientsToCPUFrequency.get(result.metric.host)).doubleValue())
-            } else if (cliOptions.avgKnownNomadClients) {
-              sumStats.addValue(snapshotCPUAsLoadAverage.multiply(averageKnownClientFrequency).doubleValue())
-              missResults++
-            } else {
-              sumStats.addValue(snapshotCPUAsLoadAverage.multiply(cliOptions.nomadFallbackClock).doubleValue())
-              missResults++
-            }
+            taskGroupToCount.put(taskGroup.name, taskGroup.count)
+            taskGroupToAllocatedMHZ.put(taskGroup.name, totalCPUResourcesForAllTasksInTaskGroup as Integer)
+            jobsToTaskGroups.get(job.name).add(taskGroup.name)
           }
         }
-      } catch (Exception exception) {
-
-        // usually this would be related to prometheus 500-ing because this is leaning against it too hard
-        println "Error occurred in opening, parsing, and processing results from prometheus for url ${url}, exception: ${exception}"
       }
 
-      new StatsWithMissData(sumStats, totalResults, missResults)
-    }
+      jobsQueryStopwatch.stop()
+      println "Finished building list of jobs and task groups for ${environment} in ${jobsQueryStopwatch.elapsed(TimeUnit.MILLISECONDS)} ms"
 
-    // loop through each job, task group and query prometheus
-    jobsToTaskGroups.each { job, listOfTaskGroups ->
+      def nomadClientsQueryStopWatch = new Stopwatch().start()
+      def nomadClientsToCPUFrequency = [:]
 
-      listOfTaskGroups.each { taskGroup ->
-
-        def prometheusTaskGroupQueryStopwatch = new Stopwatch().start()
-        def prometheusQueryBase = """${prometheusHost}/api/v1/query?query=avg_over_time(nomad_client_allocs_cpu_total_percent{task="${taskGroup}"}"""
-
-        // offer data to the queue
-        queue.offer(new ContainerStats(environment,
-          job,
-          taskGroup,
-          taskGroupToAllocatedMHZ.getOrDefault(taskGroup, 0),
-          taskGroupToCount.getOrDefault(taskGroup, 0),
-          cliOptions.disableOneHourQuery ? null : slurpAndReport("${prometheusQueryBase}[30s])[1h:30s]"),
-          cliOptions.disableOneDayQuery ? null : slurpAndReport("${prometheusQueryBase}[5m])[1d:5m]"),
-          cliOptions.disableSevenDayQuery ? null : slurpAndReport("${prometheusQueryBase}[30m])[7d:30m]"),
-          cliOptions.disableThirtyDayQuery ? null : slurpAndReport("${prometheusQueryBase}[1h])[30d:1h]"),
-          cliOptions.enableNinetyDayQuery ? slurpAndReport("${prometheusQueryBase}[6h])[90d:6h]") : null))
-
-        prometheusTaskGroupQueryStopwatch.stop()
-        println "Finished querying prometheus for ${environment}, job ${job} and task group ${taskGroup} in ${prometheusTaskGroupQueryStopwatch.elapsed(TimeUnit.MILLISECONDS)} ms"
-
-        Thread.sleep(perTaskQuerySleepTime)
+      // add clock frequencies for known nomad instances
+      nomadApiClient.getNodesApi().list().getValue().each { nomadClient ->
+        nomadApiClient.getNodesApi().info(nomadClient.id).getValue().each { nomad ->
+          nomadClientsToCPUFrequency.put(nomad.name, new BigDecimal(nomad.getAttributes().get('cpu.frequency')))
+        }
       }
+
+      def averageKnownClientFrequency = nomadClientsToCPUFrequency.values().sum() / nomadClientsToCPUFrequency.values().size()
+
+      nomadClientsQueryStopWatch.stop()
+      println "Finished building list of nomad clients for ${environment} in ${nomadClientsQueryStopWatch.elapsed(TimeUnit.MILLISECONDS)} ms"
+
+      def slurper = new JsonSlurper()
+
+      // closure to open url, parse, and report back on stats
+      def slurpAndReport = { url ->
+
+        def sumStats = new DescriptiveStatistics()
+
+        def totalResults = 0
+        def missResults = 0
+
+        try {
+
+          def parsedResponse = slurper.parse(url.toURL())
+
+          parsedResponse.data.result.each { result ->
+
+            result.values.each { value ->
+
+              totalResults++
+
+              def snapshotCPUTotalPercent = new BigDecimal(value.last(), mathContext)
+              def snapshotCPUAsLoadAverage = snapshotCPUTotalPercent.movePointLeft(2)
+
+              if (nomadClientsToCPUFrequency.containsKey(result.metric.host)) {
+                sumStats.addValue(snapshotCPUAsLoadAverage.multiply(nomadClientsToCPUFrequency.get(result.metric.host)).doubleValue())
+              } else if (cliOptions.avgKnownNomadClients) {
+                sumStats.addValue(snapshotCPUAsLoadAverage.multiply(averageKnownClientFrequency).doubleValue())
+                missResults++
+              } else {
+                sumStats.addValue(snapshotCPUAsLoadAverage.multiply(cliOptions.nomadFallbackClock).doubleValue())
+                missResults++
+              }
+            }
+          }
+        } catch (Exception exception) {
+
+          // usually this would be related to prometheus 500-ing because this is leaning against it too hard
+          println "Error occurred in opening, parsing, and processing results from prometheus for url ${url}, exception: ${exception}"
+        }
+
+        new StatsWithMissData(sumStats, totalResults, missResults)
+      }
+
+      // loop through each job, task group and query prometheus
+      jobsToTaskGroups.each { job, listOfTaskGroups ->
+
+        listOfTaskGroups.each { taskGroup ->
+
+          def prometheusTaskGroupQueryStopwatch = new Stopwatch().start()
+          def prometheusQueryBase = """${prometheusHost}/api/v1/query?query=avg_over_time(nomad_client_allocs_cpu_total_percent{task="${taskGroup}"}"""
+
+          // offer data to the queue
+          queue.offer(new ContainerStats(environment,
+            job,
+            taskGroup,
+            taskGroupToAllocatedMHZ.getOrDefault(taskGroup, 0),
+            taskGroupToCount.getOrDefault(taskGroup, 0),
+            cliOptions.disableOneHourQuery ? null : slurpAndReport("${prometheusQueryBase}[30s])[1h:30s]"),
+            cliOptions.disableOneDayQuery ? null : slurpAndReport("${prometheusQueryBase}[5m])[1d:5m]"),
+            cliOptions.disableSevenDayQuery ? null : slurpAndReport("${prometheusQueryBase}[30m])[7d:30m]"),
+            cliOptions.disableThirtyDayQuery ? null : slurpAndReport("${prometheusQueryBase}[1h])[30d:1h]"),
+            cliOptions.enableNinetyDayQuery ? slurpAndReport("${prometheusQueryBase}[6h])[90d:6h]") : null))
+
+          prometheusTaskGroupQueryStopwatch.stop()
+          println "Finished querying prometheus for ${environment}, job ${job} and task group ${taskGroup} in ${prometheusTaskGroupQueryStopwatch.elapsed(TimeUnit.MILLISECONDS)} ms"
+
+          Thread.sleep(perTaskQuerySleepTime)
+        }
+      }
+
+      nomadApiClient.close()
+
+      perEnvironmentStopwatch.stop()
+      println "Finished building data for ${environment} in ${perEnvironmentStopwatch.elapsed(TimeUnit.SECONDS)} seconds"
+
+    } catch (Exception e) {
+
+      printErr "An exception occurred; ${e}"
+      latch.countDown()
     }
-
-    nomadApiClient.close()
-
-    perEnvironmentStopwatch.stop()
-    println "Finished building data for ${environment} in ${perEnvironmentStopwatch.elapsed(TimeUnit.SECONDS)} seconds"
-
-    latch.countDown()
   }
 }
 
