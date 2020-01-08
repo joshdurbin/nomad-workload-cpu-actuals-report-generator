@@ -345,8 +345,8 @@ envs.each { environment ->
       println "Finished building data for ${environment} in ${perEnvironmentStopwatch.elapsed(TimeUnit.SECONDS)} seconds"
 
     } catch (Exception e) {
-
       printErr "An exception occurred; ${e}"
+    } finally {
       latch.countDown()
     }
   }
