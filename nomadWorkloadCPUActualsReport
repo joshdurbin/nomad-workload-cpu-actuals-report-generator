@@ -330,7 +330,7 @@ envs.each { environment ->
             cliOptions.disableOneDayQuery ? null : slurpAndReport("${prometheusQueryBase}[5m])[1d:5m]"),
             cliOptions.disableSevenDayQuery ? null : slurpAndReport("${prometheusQueryBase}[30m])[7d:30m]"),
             cliOptions.disableThirtyDayQuery ? null : slurpAndReport("${prometheusQueryBase}[1h])[30d:1h]"),
-            cliOptions.enableNinetyDayQuery ? slurpAndReport("${prometheusQueryBase}[6h])[90d:6h]") : null))
+            cliOptions.enableNinetyDayQuery ? slurpAndReport("${prometheusQueryBase}[6h])[90d:6h]") : null), 10, TimeUnit.SECONDS)
 
           prometheusTaskGroupQueryStopwatch.stop()
           println "Finished querying prometheus for ${environment}, job ${job} and task group ${taskGroup} in ${prometheusTaskGroupQueryStopwatch.elapsed(TimeUnit.MILLISECONDS)} ms"
