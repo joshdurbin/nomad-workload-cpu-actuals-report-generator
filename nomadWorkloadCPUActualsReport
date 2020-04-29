@@ -2,10 +2,10 @@
 
 @Grapes([
     @Grab(group='org.apache.commons', module='commons-math3', version='3.6.1'),
-    @Grab(group='com.hashicorp.nomad', module='nomad-sdk', version='0.8.6.1'),
-    @Grab(group='com.google.guava', module='guava', version='28.1-jre'),
-    @Grab(group='org.apache.poi', module='poi', version='4.1.1'),
-    @Grab(group='org.apache.poi', module='poi-ooxml', version='4.1.1')
+    @Grab(group='com.hashicorp.nomad', module='nomad-sdk', version='0.10.5.0'),
+    @Grab(group='com.google.guava', module='guava', version='29.0-jre'),
+    @Grab(group='org.apache.poi', module='poi', version='4.1.2'),
+    @Grab(group='org.apache.poi', module='poi-ooxml', version='4.1.2')
 ])
 
 import java.awt.Color
@@ -81,7 +81,7 @@ println "Processing for environments: ${envs}"
 // various wait, timeouts, etc...
 def perTaskQuerySleepTime = TimeUnit.SECONDS.toMillis(cliOptions.querySleepTime)
 
-def queuePollWait = 5L
+def queuePollAndOfferWaitTime = 30L
 def mathContext = new MathContext(14)
 
 // header values used for each sheet in the excel doc
@@ -235,19 +235,24 @@ envs.each { environment ->
       nomadApiClient.getJobsApi().list().getValue().findAll { job ->
         job.type == 'service'
       }.each { job ->
-        nomadApiClient.getJobsApi().info(job.name).getValue().each { jobDetail ->
-          jobsToTaskGroups.put(job.name, [])
-          jobDetail.getTaskGroups().each { taskGroup ->
+        try {
 
-            // compute the sum of all task group, tasks CPU resource definitions
-            def totalCPUResourcesForAllTasksInTaskGroup = taskGroup.tasks.collect { task ->
-              task.resources.cpu
-            }.sum()
+          nomadApiClient.getJobsApi().info(job.name).getValue().each { jobDetail ->
+            jobsToTaskGroups.put(job.name, [])
+            jobDetail.getTaskGroups().each { taskGroup ->
 
-            taskGroupToCount.put(taskGroup.name, taskGroup.count)
-            taskGroupToAllocatedMHZ.put(taskGroup.name, totalCPUResourcesForAllTasksInTaskGroup as Integer)
-            jobsToTaskGroups.get(job.name).add(taskGroup.name)
+              // compute the sum of all task group, tasks CPU resource definitions
+              def totalCPUResourcesForAllTasksInTaskGroup = taskGroup.tasks.collect { task ->
+                task.resources.cpu
+              }.sum()
+
+              taskGroupToCount.put(taskGroup.name, taskGroup.count)
+              taskGroupToAllocatedMHZ.put(taskGroup.name, totalCPUResourcesForAllTasksInTaskGroup as Integer)
+              jobsToTaskGroups.get(job.name).add(taskGroup.name)
+            }
           }
+        } catch (Exception e) {
+          printErr "An exception occurred; ${e}"
         }
       }
 
@@ -330,7 +335,7 @@ envs.each { environment ->
             cliOptions.disableOneDayQuery ? null : slurpAndReport("${prometheusQueryBase}[5m])[1d:5m]"),
             cliOptions.disableSevenDayQuery ? null : slurpAndReport("${prometheusQueryBase}[30m])[7d:30m]"),
             cliOptions.disableThirtyDayQuery ? null : slurpAndReport("${prometheusQueryBase}[1h])[30d:1h]"),
-            cliOptions.enableNinetyDayQuery ? slurpAndReport("${prometheusQueryBase}[6h])[90d:6h]") : null), 10, TimeUnit.SECONDS)
+            cliOptions.enableNinetyDayQuery ? slurpAndReport("${prometheusQueryBase}[6h])[90d:6h]") : null), queuePollAndOfferWaitTime, TimeUnit.SECONDS)
 
           prometheusTaskGroupQueryStopwatch.stop()
           println "Finished querying prometheus for ${environment}, job ${job} and task group ${taskGroup} in ${prometheusTaskGroupQueryStopwatch.elapsed(TimeUnit.MILLISECONDS)} ms"
@@ -369,7 +374,7 @@ envs.each { environment ->
 while (latch.count > 0L) {
 
   // keep the loop from running crazy out of control while the environment processing threads spin up
-  def containerStats = queue.poll(queuePollWait, TimeUnit.SECONDS)
+  def containerStats = queue.poll(queuePollAndOfferWaitTime, TimeUnit.SECONDS)
 
   if (containerStats) {
 

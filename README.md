@@ -2,7 +2,7 @@
 
 ## Summary
 
-This is a tool that generates the historical workload output for nomad jobs and tasks, task groups based on metrics reported to prometheus. The output is an excel file with a worksheet for each environment sampled. Environments are polled concurrently to reduce the time it takes for the output to generate. The tool samples prometheus at the following intervals for each task:
+This is a tool that generates the historical workload output for nomad jobs and tasks, task groups based on metrics reported to prometheus. The output is an excel file with a worksheet for each environment sampled. Environments are polled concurrently to reduce generation time, but sequentially within each environment to reduce load on prometheus. A throttling, sleep parameter exists to slow calls to prometheus. The tool samples prometheus at the following intervals for each task:
 
 - the past hour, sampling every 30 seconds
 - the past day, sampling every 5 minutes
@@ -32,14 +32,13 @@ The tool reports out the following once per task group per environment:
 
 ## Why use this?
 
-If you've got a time series setup in place, you likely have grafana or other graphing tools in place to view the data and might ask what benefit a tool like this provides... Good question. This tool aims to help operators understand whether unbound (explain) workloads in Nomad are over or underschedule on machines **and** whether or not those workloads are stealing work from one another. It does so by essentially converting the load as a percentage of CPU used in sampling interval (prometheus) against the reported clockspeed of the Nomad client the workload was run on. It does this to produce "MHz used" such it can be compared to the CPU MHz reservation in the Nomad job definition.
+This tool aims to help operators understand whether unbounded workloads in Nomad are over or underschedule on machines **and** whether or not those workloads are stealing work from one another. It does so by essentially converting the load as a percentage of CPU used in sampling interval (prometheus) against the reported clockspeed of the Nomad client the workload was run on. It does this to produce "MHz used" such it can be compared to the CPU MHz reservation in the Nomad job definition. This is particularly useful in cases where Nomad clients instances have inconsistent clock speeds.
 
 ## Prerequisites
 
 1. Groovy installed (`brew install groovy`)
-2. Nomad infrastructure with metrics reporting to prometheus
+2. Nomad configured to report metrics to prometheus
 3. Keys to enable communication with your Nomad infrastructure
-4. Unbound workloads in your Nomad container environment that need reviewing
 
 ## Usage
 
